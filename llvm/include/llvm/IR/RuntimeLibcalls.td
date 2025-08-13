@@ -1491,10 +1491,17 @@ def ARMHalfConvertLibcallCallingConv : LibcallCallingConv<
     (isAAPCS_ABI(TT, ABIName) ? CallingConv::ARM_AAPCS : CallingConv::ARM_APCS)}]
 >;
 
-def GNUEABIHalfConvertCalls :
-  LibcallImpls<(add __gnu_f2h_ieee, __gnu_h2f_ieee),
-    RuntimeLibcallPredicate<[{!TT.isOSBinFormatMachO() &&
-                              !TT.isTargetAEABI()}]>> {
+def ARMLibgccHalfConvertCalls :
+  LibcallImpls<(add __truncsfhf2, __extendhfsf2),
+    RuntimeLibcallPredicate<[{!TT.isTargetAEABI() && TT.isOSBinFormatMachO()}]>> {
+  let CallingConv = ARMHalfConvertLibcallCallingConv;
+}
+
+// FIXME: These conditions are probably bugged. We're using the
+// default libgcc call when the other cases are replaced.
+def ARMDoubleToHalfCalls :
+  LibcallImpls<(add __truncdfhf2),
+    RuntimeLibcallPredicate<[{!TT.isTargetAEABI()}]>> {
   let CallingConv = ARMHalfConvertLibcallCallingConv;
 }
 
@@ -1503,6 +1510,13 @@ def GNUEABIHalfConvertCalls :
 def EABIHalfConvertCalls : LibcallImpls<(add __aeabi_f2h, __aeabi_h2f),
                                         isTargetAEABIAndAAPCS_ABI> {
   let CallingConv = ARM_AAPCS;
+}
+
+def GNUEABIHalfConvertCalls :
+  LibcallImpls<(add __gnu_f2h_ieee, __gnu_h2f_ieee),
+    RuntimeLibcallPredicate<[{!TT.isOSBinFormatMachO() &&
+                              !TT.isTargetAEABI()}]>> {
+  let CallingConv = ARMHalfConvertLibcallCallingConv;
 }
 
 def WindowARMDivRemCalls : LibcallImpls<
@@ -1624,7 +1638,9 @@ def isARMOrThumb : RuntimeLibcallPredicate<"TT.isARM() || TT.isThumb()">;
 
 def ARMSystemLibrary
     : SystemRuntimeLibrary<isARMOrThumb,
-      (add WinDefaultLibcallImpls,
+      (add (sub WinDefaultLibcallImpls, ARMLibgccHalfConvertCalls,
+                                        GNUEABIHalfConvertCalls,
+                                        ARMDoubleToHalfCalls),
            LibcallImpls<(add __powisf2, __powidf2), isNotOSMSVCRT>,
            LibmHasFrexpF32, LibmHasLdexpF32,
            LibmHasFrexpF128, LibmHasLdexpF128,
@@ -1638,8 +1654,10 @@ def ARMSystemLibrary
 
            AEABICalls,
            AEABI45MemCalls,
+           ARMLibgccHalfConvertCalls,
            EABIHalfConvertCalls,
            GNUEABIHalfConvertCalls,
+           ARMDoubleToHalfCalls,
 
            // Use divmod compiler-rt calls for iOS 5.0 and later.
            LibcallImpls<(add __divmodsi4, __udivmodsi4),
